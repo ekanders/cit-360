@@ -1,0 +1,97 @@
+---
+- hosts: web
+  vars:
+    server_name: curriculum
+    service_name: curriculum
+    service_version: 1.0
+    app_env: test
+    db_host: localhost
+    db_database: curriculum
+    db_username: curriculum
+    db_port: 3306
+    service_dir: /usr/share/nginx/{{ service_name }}
+  tasks:
+    - name: include secrets
+      include_vars: vault.yml
+
+    - name : configure SELINUX to permissive state
+      become: yes
+      lineinfile: dest=/etc/sysconfig/selinux regexp="^SELINUX=" line="SELINUX=permissive"
+
+    - name : set SELINUX to permissive state
+      become: yes
+      command: setenforce 0
+
+    - name : install and update epel
+      become: yes
+      yum: name=epel-release update_cache=yes state=present
+
+    - name : install and update php
+      become: yes
+      yum: name=nginx,php,php-fpm,php-ldap,php-mbstring,php-mcrypt,php-mysql,php-phpunit-PHPUnit update_cache=yes state=present
+      register: nginx_install
+
+    - name: download getcomposer
+      become: yes
+      get_url: url=https://getcomposer.org/installer dest=/usr/local/bin/composer mode=0777
+    
+    - name: install getcomposer using php
+      become: yes
+      shell:  php /usr/local/bin/composer --install-dir=/usr/local/bin --filename=composer
+
+    - name: copy nginx.conf to nginx folder
+      become: yes
+      copy: src=web/nginx.conf dest=/etc/nginx/nginx.conf mode=0000
+      register: nginx_conf
+
+    - name: download vhost.conf template from controller
+      become: yes
+      template: src=web/vhost.conf.j2 dest=/etc/nginx/conf.d/{{ service_name }}.conf mode=0644
+      register: vhost_conf
+
+    - name: download php.ini template from controller
+      become: yes
+      template: src=web/php.ini.j2 dest=/etc/php.ini mode=0644
+      register: php_conf
+
+    - name: copy php-fpm-web.conf from controller
+      become: yes
+      copy: src=web/php-fpm-web.conf dest=/etc/php-fpm.d/www.conf mode=0644
+      register: php_fpm_conf
+
+    - name: restart nginx if installed or changes has been made
+      become: yes
+      systemd: name=nginx state=restarted enabled=yes
+      when: nginx_install|changed or nginx_conf|changed or vhost_conf|changed
+
+    - name: restart php if installed or changes has been made
+      become: yes
+      systemd: name=php-fpm state=restarted enabled=yes
+      when: nginx_install|changed or php_conf|changed or php_fpm_conf|changed
+
+    - name: create "{{ service_dir }}" directories
+      become: yes
+      file: path="{{ service_dir }}" state=directory
+
+    - name: unpack "{{ service_name }}.tgz" to "{{ service_dir }}" directory
+      become: yes
+      unarchive: src=web/{{ service_name }}.tgz dest="{{ service_dir }}" mode=0755
+
+    - name: update composer
+      become: yes
+      command: /usr/local/bin/composer update chdir={{ service_dir }}
+
+    - name: change permissions recursevly
+      become: yes
+      file: path="{{ service_dir }}" recurse=yes mode=0777
+      # command: chmod -R 0777 storage chdir="{{ service_dir }}"
+
+    - name: change ownership of "{{ service_dir }}"
+      file: path="{{ service_dir }}" owner=root
+    # command: chown -R nginx:nginx . chdir="{{ service_dir }}"
+    
+
+    - name: download env.j2 template from controller and set owner as nginx
+      become: yes
+      template: src=web/env.j2 dest="{{ service_dir }}/.env" mode=0644 owner=nginx
+
