@@ -258,6 +258,7 @@ resource "aws_db_instance" "maria_db"{
 	username = "root"
 	password = "${var.db_password}"
 	db_subnet_group_name = "${aws_db_subnet_group.db_group.id}"
+	vpc_security_group_ids = ["${aws_security_group.group_db.id}"]
 	tags { 
 	name="mariadb"
 	}
@@ -300,7 +301,7 @@ resource "aws_instance" "web_b" {
      vpc_security_group_ids = ["${aws_security_group.http_ssh.id}"]
     tags {
         Name = "webserver-b"
-	Service = "Curriculum"
+	Service = "curriculum"
     }
 }
 

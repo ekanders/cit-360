@@ -1,6 +1,7 @@
 ---
 - hosts: db
   vars:
+        db_host: tf-20161214025627430472700js3.c1on7atrmini.us-west-2.rds.amazonaws.com
   tasks:
     - name: include secrets
       include_vars: vault.yml
@@ -9,24 +10,16 @@
       become : yes
       copy: src=db/MariaDB.repo dest=/etc/yum.repos.d/MariaDB.repo mode=0644
 
-    - name: install MariaDB server using yum
+    - name: update MariaDB server using yum
       become: yes
-      yum: name=MariaDB-server,MariaDB-client update_cache=yes state=present
+      yum: name={{ item }} update_cache=yes state=present
+      with_items:
+        - MariaDB-client
 
-    - name: start mariadb service
-      become: yes
-      systemd: name=mariadb state=started enabled=yes
-
-    - name: download mariadb answers from controller
-      template: src=db/mariadb_answers.txt dest=/tmp/mariadb_answers.txt mode=0644
-
-    - name: install mysql using mariadb answers
-      become: yes
-      shell: /usr/bin/mysql_secure_installation </tmp/mariadb_answers.txt
 
     - name: copy and unpack db.tgz from controller
       unarchive: src=db/db.tgz dest=~/ mode=0777
 
     - name: run database.sh using "{{ service_dir }}"
-      command: ./make_databases.sh {{ db_password }} localhost chdir=~/db
+      command: ./make_databases.sh {{ db_password }} {{ db_host }} chdir=~/db
       ignore_errors: True
